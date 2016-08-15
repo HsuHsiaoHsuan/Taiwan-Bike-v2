@@ -1,8 +1,8 @@
 package idv.funnybrain.bike;
 
 import android.os.AsyncTask;
-import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
+import android.support.v4.app.FragmentActivity;
 import android.util.Log;
 import android.widget.Toast;
 
@@ -11,8 +11,14 @@ import com.android.volley.RequestQueue;
 import com.android.volley.Response;
 import com.android.volley.VolleyError;
 import com.android.volley.toolbox.JsonArrayRequest;
-import com.android.volley.toolbox.JsonObjectRequest;
-import com.android.volley.toolbox.Volley;
+import com.android.volley.toolbox.StringRequest;
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonMappingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
@@ -23,8 +29,12 @@ import com.google.android.gms.maps.model.MarkerOptions;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
+import idv.funnybrain.bike.data.CITY;
 import idv.funnybrain.bike.data.Station;
 
 public class MapsActivity extends FragmentActivity implements OnMapReadyCallback {
@@ -65,43 +75,55 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         new DataGetter().execute("");
     }
 
-    private class DataGetter extends AsyncTask<String, Void, List<Station>> {
+    private class DataGetter extends AsyncTask<String, Void, Void> {
 
         @Override
-        protected List<Station> doInBackground(String... strings) {
+        protected Void doInBackground(String... strings) {
             RequestQueue queue =
                     DataDownloader.getInstance(MapsActivity.this.getApplicationContext())
                             .getRequestQueue();
-            // MySingleton.getInstance(this).addToRequestQueue(stringRequest);
-            String url = "http://61.216.94.105:5566/taipei";
 
-            JsonArrayRequest jsObjRequest = new JsonArrayRequest
-                    (Request.Method.GET, url, null, new Response.Listener<JSONArray>() {
-
+            StringRequest stringRequest = new StringRequest(Request.Method.GET, CITY.TAIPEI.toString(),
+                    new Response.Listener<String>() {
                         @Override
-                        public void onResponse(JSONArray response) {
+                        public void onResponse(String response) {
                             if (D) {
-                                Log.e(TAG, response.toString());
+                                Log.d(TAG, response.toString());
+                            }
+
+                            try {
+                                JsonFactory factory = new JsonFactory();
+                                JsonParser parser = factory.createParser(response.toString());
+                                ObjectMapper mapper = new ObjectMapper();
+                                mapper.disable(SerializationFeature.FAIL_ON_EMPTY_BEANS);
+                                mapper.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+
+                                Station[] temp = mapper.readValue(parser, Station[].class);
+                                for (int x=0; x<temp.length; x++) {
+                                    Log.e(TAG, temp[x].getName() + "");
+                                }
+                            } catch (JsonParseException e) {
+                                Log.e(TAG, e.getMessage());
+                                e.printStackTrace();
+                            } catch (JsonMappingException e) {
+                                Log.e(TAG, e.getMessage());
+                                e.printStackTrace();
+                            } catch (IOException e) {
+                                Log.e(TAG, e.getMessage());
+                                e.printStackTrace();
                             }
                         }
-                    }, new Response.ErrorListener() {
-
+                    },
+                    new Response.ErrorListener() {
                         @Override
                         public void onErrorResponse(VolleyError error) {
-                            Log.e(TAG, "ERROR:" + error.getMessage());
-                            Toast.makeText(
-                                    MapsActivity.this, "ERROR, plz try later", Toast.LENGTH_LONG)
-                                    .show();
+                            // Handle error
                         }
                     });
-            DataDownloader.getInstance(MapsActivity.this.getApplicationContext()).addToRequestQueue(jsObjRequest);
+
+            queue.add(stringRequest);
 
             return null;
-        }
-
-        @Override
-        protected void onPostExecute(List<Station> stations) {
-            super.onPostExecute(stations);
         }
     }
 }
