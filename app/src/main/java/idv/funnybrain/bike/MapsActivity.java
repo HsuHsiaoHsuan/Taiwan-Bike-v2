@@ -24,8 +24,12 @@ import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 
+import org.greenrobot.eventbus.EventBus;
+import org.greenrobot.eventbus.Subscribe;
+import org.greenrobot.eventbus.ThreadMode;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -35,11 +39,13 @@ import java.util.Arrays;
 import java.util.List;
 
 import idv.funnybrain.bike.data.CITY;
+import idv.funnybrain.bike.data.City;
 import idv.funnybrain.bike.data.Station;
+import idv.funnybrain.bike.event.DataDownloadedEvent;
 
 public class MapsActivity extends FragmentActivity implements OnMapReadyCallback {
     private static final String TAG = MapsActivity.class.getSimpleName();
-    private static final boolean D = true;
+    private static final boolean D = false;
 
     private GoogleMap mMap;
 
@@ -51,6 +57,18 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
                 .findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
+        EventBus.getDefault().register(this);
+    }
+
+    @Override
+    public void onStop() {
+        EventBus.getDefault().unregister(this);
+        super.onStop();
     }
 
     /**
@@ -83,12 +101,12 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                     DataDownloader.getInstance(MapsActivity.this.getApplicationContext())
                             .getRequestQueue();
 
-            StringRequest stringRequest = new StringRequest(Request.Method.GET, CITY.TAIPEI.toString(),
+            StringRequest stringRequest = new StringRequest(Request.Method.GET, City.TAIPEI,
                     new Response.Listener<String>() {
                         @Override
                         public void onResponse(String response) {
                             if (D) {
-                                Log.d(TAG, response.toString());
+                                Log.e(TAG, response.toString());
                             }
 
                             try {
@@ -99,9 +117,12 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                                 mapper.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
 
                                 Station[] temp = mapper.readValue(parser, Station[].class);
-                                for (int x=0; x<temp.length; x++) {
-                                    Log.e(TAG, temp[x].getName() + "");
+                                if (D) {
+                                    for (int x = 0; x < temp.length; x++) {
+                                        Log.e(TAG, temp[x].getName() + "");
+                                    }
                                 }
+                                EventBus.getDefault().post(new DataDownloadedEvent(temp));
                             } catch (JsonParseException e) {
                                 Log.e(TAG, e.getMessage());
                                 e.printStackTrace();
@@ -118,12 +139,34 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                         @Override
                         public void onErrorResponse(VolleyError error) {
                             // Handle error
+                            Toast.makeText(MapsActivity.this, "Please refresh data manually.",
+                                    Toast.LENGTH_LONG).show();
                         }
                     });
 
             queue.add(stringRequest);
 
             return null;
+        }
+    }
+
+    @Subscribe(threadMode = ThreadMode.MAIN)
+    public void onDataDownloadedEvent(DataDownloadedEvent event) {
+        mMap.clear();
+        for (Station s : event.getData()) {
+            Log.e(TAG, s.getName());
+
+
+            mMap.addMarker(new MarkerOptions()
+                    .position(new LatLng(s.getLat(), s.getLon()))
+                    .title(s.getName()));
+            mMap.setOnMarkerClickListener(new GoogleMap.OnMarkerClickListener() {
+                @Override
+                public boolean onMarkerClick(Marker marker) {
+
+                    return false;
+                }
+            });
         }
     }
 }
